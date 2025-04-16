@@ -1,0 +1,10 @@
+<%= form_with url: chats_path, method: :post, local: true, data: { turbo: false } do |f| %>
+  <%= f.text_field :message, placeholder: "Type something..." %>
+  <%= f.submit "Send" %>
+<% end %>
+
+<% if @user_input.present? %>
+  <div class="user-message"><strong>You:</strong> <%= @user_input %></div>
+  <div class="bot-response"><strong>Bot:</strong> <%= @response %></div>
+<% end %>
+
