@@ -1,10 +1,222 @@
-<%= form_with url: chats_path, method: :post, local: true, data: { turbo: false } do |f| %>
-  <%= f.text_field :message, placeholder: "Type something..." %>
-  <%= f.submit "Send" %>
-<% end %>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PDF Book View + Chat</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f4f4f4;
+    }
 
-<% if @user_input.present? %>
-  <div class="user-message"><strong>You:</strong> <%= @user_input %></div>
-  <div class="bot-response"><strong>Bot:</strong> <%= @response %></div>
-<% end %>
+    /* Grid for desktop */
+    .container {
+      display: grid;
+      grid-template-columns: 55% 1fr;
+      gap: 20px;
+    }
 
+    .left-panel, .right-panel {
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    /* Book viewer */
+    #controls {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    #bookViewer {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    canvas {
+      border: 1px solid #ccc;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      max-width: 48%;
+      height: auto;
+    }
+
+    /* Chat styling */
+    .user-message, .bot-response {
+      margin-top: 15px;
+      padding: 10px;
+      background-color: #f9f9f9;
+      border-radius: 6px;
+    }
+
+    input[type="text"] {
+      width: calc(100% - 100px);
+      padding: 8px;
+      margin-right: 10px;
+    }
+
+    input[type="submit"] {
+      padding: 8px 16px;
+    }
+
+    /* Mobile: stack panels & add tabs */
+    @media (max-width: 768px) {
+      .container {
+        display: block;
+      }
+      .tab-buttons {
+        display: flex;
+        margin-bottom: 10px;
+      }
+      .tab-buttons button {
+        flex: 1;
+        padding: 10px;
+        border: none;
+        background: #ddd;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      .tab-buttons button.active {
+        background: #fff;
+        border-bottom: 2px solid #333;
+      }
+      .left-panel, .right-panel {
+        display: none;
+      }
+      .left-panel.active, .right-panel.active {
+        display: block;
+      }
+      canvas {
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Mobile Tab Buttons -->
+  <div class="tab-buttons">
+    <button id="tab-pdf" class="active">PDF Viewer</button>
+    <button id="tab-chat">Chat</button>
+  </div>
+
+  <div class="container">
+    <!-- Left Panel: PDF Viewer -->
+    <div class="left-panel active">
+      <h2>Select PDF</h2>
+      <input type="file" id="fileInput" accept="application/pdf" />
+
+      <div id="controls">
+        <button onclick="prevPages()">Previous</button>
+        <button onclick="nextPages()">Next</button>
+      </div>
+      <div id="bookViewer">
+        <canvas id="left-page"></canvas>
+        <canvas id="right-page"></canvas>
+      </div>
+    </div>
+
+    <!-- Right Panel: Chat Form and Response -->
+    <div class="right-panel">
+      <h2>Chat with Bot</h2>
+      <%= form_with url: chats_path, method: :post, remote: true do |f| %>
+        <%= f.text_field :message, placeholder: "Type something..." %>
+        <%= f.submit "Send" %>
+      <% end %>
+
+      <% if @user_input.present? %>
+        <div class="user-message"><strong>You:</strong> <%= @user_input %></div>
+        <div class="bot-response"><strong>Bot:</strong> <%= @response %></div>
+      <% end %>
+    </div>
+  </div>
+
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <script>
+    // Tab toggling for mobile
+    const tabPdf  = document.getElementById('tab-pdf');
+    const tabChat = document.getElementById('tab-chat');
+    const leftPanel  = document.querySelector('.left-panel');
+    const rightPanel = document.querySelector('.right-panel');
+
+    function showPDF() {
+      tabPdf.classList.add('active');
+      tabChat.classList.remove('active');
+      leftPanel.classList.add('active');
+      rightPanel.classList.remove('active');
+    }
+    function showChat() {
+      tabChat.classList.add('active');
+      tabPdf.classList.remove('active');
+      rightPanel.classList.add('active');
+      leftPanel.classList.remove('active');
+    }
+
+    tabPdf.addEventListener('click',  showPDF);
+    tabChat.addEventListener('click', showChat);
+
+    // PDF.js rendering
+    let pdfDoc = null,
+        currentPage = 1,
+        scale = 0.9;  // scaled-down pages
+
+    const leftCanvas  = document.getElementById('left-page'),
+          rightCanvas = document.getElementById('right-page'),
+          leftCtx     = leftCanvas .getContext('2d'),
+          rightCtx    = rightCanvas.getContext('2d');
+
+    document.getElementById('fileInput').addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file || file.type !== 'application/pdf') {
+        return alert('Please select a valid PDF file.');
+      }
+      const reader = new FileReader();
+      reader.onload = function () {
+        const data = new Uint8Array(this.result);
+        pdfjsLib.getDocument({ data }).promise.then(doc => {
+          pdfDoc = doc;
+          currentPage = 1;
+          renderPages();
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function renderPages() {
+      if (!pdfDoc) return;
+      renderPage(currentPage, leftCanvas, leftCtx);
+      if (currentPage + 1 <= pdfDoc.numPages) {
+        renderPage(currentPage + 1, rightCanvas, rightCtx);
+      } else {
+        rightCtx.clearRect(0, 0, rightCanvas.width, rightCanvas.height);
+      }
+    }
+
+    function renderPage(num, canvas, ctx) {
+      pdfDoc.getPage(num).then(page => {
+        const viewport = page.getViewport({ scale });
+        canvas.width  = viewport.width;
+        canvas.height = viewport.height;
+        page.render({ canvasContext: ctx, viewport });
+      });
+    }
+
+    function nextPages() {
+      if (!pdfDoc || currentPage + 2 > pdfDoc.numPages) return;
+      currentPage += 2;
+      renderPages();
+    }
+
+    function prevPages() {
+      if (!pdfDoc || currentPage - 2 < 1) return;
+      currentPage -= 2;
+      renderPages();
+    }
+  </script>
+</body>
+</html>

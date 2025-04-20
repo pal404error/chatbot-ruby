@@ -14,5 +14,6 @@ class ChatsController < ApplicationController
 
     # ⚠️ Avoid flash/session — just pass in URL or render directly
     redirect_to root_path(response: response, user_input: user_input)
+    # return response: response
   end
 end
